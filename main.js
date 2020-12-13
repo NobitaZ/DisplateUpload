@@ -34,6 +34,8 @@ let publicIPObj = {},
 
 const dbConnectionStr =
   process.env.NODE_ENV !== "development" ? process.env.PRODUCTION_DB2 : process.env.REMOTE_DB;
+// const dbConnectionStr =
+//   process.env.NODE_ENV !== "development" ? process.env.REMOTE_DB : process.env.PRODUCTION_DB2;
 
 //--------------------------------------------------------------------
 // AUTO UPDATE

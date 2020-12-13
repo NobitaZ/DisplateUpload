@@ -3,4 +3,5 @@ node_modules/
 release-builds/
 chrome/
 dist/
+logs/
 .env

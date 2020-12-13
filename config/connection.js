@@ -26,7 +26,10 @@ let _db;
 
 module.exports = {
   connectToServer: () => {
-    let db = process.env.NODE_ENV !== "development" ? process.env.PRODUCTION_DB2 : process.env.REMOTE_DB;
+    let db =
+      process.env.NODE_ENV !== "development" ? process.env.PRODUCTION_DB2 : process.env.REMOTE_DB;
+    // let db =
+    // process.env.NODE_ENV !== "development" ? process.env.REMOTE_DB : process.env.PRODUCTION_DB2;
     mongoose
       .connect(db, { keepAlive: true, useNewUrlParser: true, useUnifiedTopology: true })
       .then(() => {
