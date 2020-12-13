@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+      integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Displate Upload Tool</title>
+    <style>
+      body {
+        font-family: "Varela Round", sans-serif;
+      }
+      .row {
+        margin-right: 0px;
+      }
+      ul {
+        column-count: 2;
+        column-gap: 2rem;
+        list-style: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <nav class="navbar navbar-expand-md bg-dark navbar-dark">
+      <label class="navbar-brand">Displate Upload Tool</label>
+    </nav>
+    <br />
+    <div id="container">
+      <div class="row my-3">
+        <div id="upload-form" class="col-sm-6 text-center">
+          <button class="btn btn-primary btn-xs my-xs-btn" type="button" onClick="uploadFunc()">
+            <span class="glyphicon glyphicon-pencil"></span>
+            Upload</button
+          ><br />
+          <span id="file-name"></span>
+        </div>
+        <div class="col-sm-6 text-center">
+          <span style="font-weight: 600">Tag name</span>
+          <input type="text" class="form-control" id="tagname" name="tagname" placeholder="Tag" />
+          <br />
+          <span style="font-weight: 600">Image type</span> <br />
+          <div class="form-check form-check-inline">
+            <input
+              class="form-check-input"
+              type="radio"
+              name="img-type"
+              id="fitRadio"
+              value="Illustration"
+              checked
+            />
+            <label class="form-check-label" for="illustrationRadio"> Illustration </label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input
+              class="form-check-input"
+              type="radio"
+              name="img-type"
+              id="photographyRadio"
+              value="Photography"
+            />
+            <label class="form-check-label" for="photographyRadio"> Photography </label>
+          </div>
+          <br />
+          <br />
+          <span style="font-weight: 600">Category</span> <br />
+          <div class="col-sm-12 text-left">
+            <ul></ul>
+          </div>
+
+          <div class="col-sm-12 text-center">
+            <button id="btnProcess" class="btn btn-primary btn-xs my-xs-btn" type="button">
+              <span class="glyphicon glyphicon-pencil"></span>
+              Submit</button
+            ><br />
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const electron = require("electron").remote;
+      const { dialog } = electron;
+      const { ipcRenderer } = require("electron");
+      const parse = require("csv-parse");
+      const path = require("path");
+      const fs = require("fs");
+
+      const fileName = document.getElementById("file-name");
+      let tagName = document.getElementById("tagname");
+      let ul = document.querySelector("ul");
+      tagName.value = "anime,my hero academia";
+      const categoryArr = [
+        "Abstract",
+        "Animals",
+        "Anime & Manga",
+        "Blueprints",
+        "Books",
+        "Cars",
+        "Cartoons",
+        "Celebrities",
+        "Cityscapes",
+        "Comics",
+        "Contemporary art",
+        "Cute",
+        "Fantasy",
+        "Fashion",
+        "Floral",
+        "Food & Kitchen",
+        "Funny",
+        "Gaming",
+        "Inspirational",
+        "Japanese & Asian",
+        "Kid's room",
+        "Landscapes",
+        "Mancave",
+        "Maps",
+        "Military",
+        "Minimalistic",
+        "Movies",
+        "Music",
+        "Nature",
+        "Paintings",
+        "Planes",
+        "Pop art",
+        "Retro",
+        "Space",
+        "Sport",
+        "Text Art",
+        "Travel",
+        "Tv shows",
+        "United States",
+        "Vintage posters",
+      ];
+      let imgType = document.querySelector('[name="img-type"]:checked');
+      let arrImgs = {};
+      let arrCategory = [];
+      categoryArr.forEach((v) => {
+        const li = document.createElement("li");
+        let checkbox = document.createElement("input");
+        checkbox.className = "form-check-input";
+        checkbox.type = "checkbox";
+        checkbox.name = "categoryCheckbox";
+        checkbox.value = v;
+        checkbox.id = v;
+        let label = document.createElement("label");
+        label.htmlFor = v;
+        label.className = "form-check-label";
+        label.appendChild(document.createTextNode(v));
+        li.appendChild(checkbox);
+        li.appendChild(label);
+        ul.appendChild(li);
+      });
+      function uploadFunc() {
+        const regexStr = /([^\\]+$)/;
+        const imgs = dialog.showOpenDialogSync({
+          title: "Image Upload",
+          properties: ["openFile", "multiSelections"],
+          filters: [
+            {
+              name: "Images",
+              extensions: ["jfif", "pjpeg", "pjp", "jpg", "jpeg"],
+            },
+          ],
+        });
+        arrImgs = imgs;
+        fileName.innerHTML = "";
+        imgs.forEach((imgPath) => {
+          var imgName = imgPath.split(regexStr);
+          fileName.innerHTML += imgName[1] + "<br>";
+        });
+      }
+
+      const btnProcess = document.getElementById("btnProcess");
+      btnProcess.addEventListener("click", function (e) {
+        e.preventDefault;
+        let checkboxChecked = document.querySelectorAll('[name="categoryCheckbox"]:checked');
+        if (checkboxChecked.length > 0) {
+          checkboxChecked.forEach((v) => {
+            arrCategory.push(v.value);
+          });
+        }
+        if (arrImgs == null || arrImgs == "" || JSON.stringify(arrImgs) == "{}") {
+          const errMsgBox = dialog.showErrorBox("No Images Selected !!!", "");
+        } else if (tagName.value == "") {
+          const errMsgBox = dialog.showErrorBox("Can not leave Tags blank !!!", "");
+        } else if (!tagName.value.includes(",")) {
+          const errMsgBox = dialog.showErrorBox("Wrong format Tag Name !!!", "");
+        } else if (checkboxChecked.length > 3) {
+          const errMsgBox = dialog.showErrorBox("Can not select more than 3 Categories !!!", "");
+        } else if (checkboxChecked.length == 0) {
+          const errMsgBox = dialog.showErrorBox("Can not leave Category blank !!!", "");
+        } else if (arrImgs.length > 10) {
+          const errMsgBox = dialog.showErrorBox("Can not select more than 10 Images !!!", "");
+        } else {
+          const items = [arrImgs, tagName.value, imgType.value, arrCategory];
+          ipcRenderer.send("upload-clicked", items);
+        }
+      });
+    </script>
+  </body>
+</html>
