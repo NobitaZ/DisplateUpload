@@ -17,6 +17,8 @@ const log = require("electron-log");
 const getmac = require("getmac");
 const publicIp = require("public-ip");
 const logger = require("./helpers/logger");
+const common = require("./helpers/common");
+// const mainProcessed = require("./MainProcess");
 
 puppeteer.use(
   RecaptchaPlugin({
@@ -279,6 +281,7 @@ ipcMain.on("auth-form", function (e, item) {
       if (err) log.error(err);
       if (isMatch) {
         if (user.roles == "ADMIN") {
+          loggerObj.user_name = user.username;
           createAdminWindow();
           mainWindow.close();
         } else {
@@ -291,6 +294,7 @@ ipcMain.on("auth-form", function (e, item) {
                     url: "http://localhost",
                     name: user.name,
                   });
+                  loggerObj.user_name = user.username;
                   createHomeWindow();
                   mainWindow.close();
                 } else {
@@ -390,6 +394,7 @@ ipcMain.on("open-account", function (e, data) {
   try {
     openAccount(data);
   } catch (err) {
+    log.error(err);
     logger.error(err.stack, loggerObj);
   }
 });
@@ -479,14 +484,8 @@ async function mainProcess(arrAcc, arrItems) {
       collectionStr = data;
     });
     //Browser handlers
-
-    console.log(imgType);
-    console.log(arrCategory);
-    console.log(arrImgPath);
-    setTimeout(() => {
-      console.log(collectionStr);
-    }, 1000);
-    const { browser, page } = await openBrowser(proxyIP);
+    const { browser, page } = await common.openBrowser(proxyIP);
+    await homeWindow.webContents.send("logs", "Browser opened");
     if (proxyUser.trim() != "" && proxyPass.trim() != "") {
       await page.authenticate({
         username: proxyUser,
@@ -515,16 +514,18 @@ async function mainProcess(arrAcc, arrItems) {
       await homeWindow.webContents.send("logs", "Resolved captcha");
       console.log("resolved siteCapt");
       await myFunc.timeOutFunc(1000);
-      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((error) => {
-        log.error(error);
+      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
       });
     } else {
       await page.type("[name='usernameOrEmail']", accUsername);
       await myFunc.timeOutFunc(1000);
       await page.type("[name='password']", accPassword);
       await myFunc.timeOutFunc(1000);
-      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((error) => {
-        log.error(error);
+      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
       });
     }
     try {
@@ -532,9 +533,11 @@ async function mainProcess(arrAcc, arrItems) {
       await homeWindow.webContents.send("logs", `Login success: ${accUsername}`);
     } catch (error) {
       await homeWindow.webContents.send("logs", `Login Error: ${accUsername}`);
-      await closeBrowser(browser).catch((error) => {
-        log.error(error);
+      await common.closeBrowser(browser).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
       });
+      await homeWindow.webContents.send("logs", "Browser closed");
       return;
     }
     // Go to File upload
@@ -576,6 +579,9 @@ async function mainProcess(arrAcc, arrItems) {
     await myFunc.timeOutFunc(5000);
     await page.waitForSelector('[data-id="0"]');
     // Type title
+    let imgPath = arrImgPath[0];
+    let imgName = imgPath.replace(/^.*[\\\/]/, "");
+    let imgDirname = path.dirname(imgPath);
     let imgNameInChars = arrImgPath[0]
       .match(regexStr)[0]
       .replace(/-/g, " ")
@@ -627,8 +633,9 @@ async function mainProcess(arrAcc, arrItems) {
         const [fileChooser] = await Promise.all([
           page.waitForFileChooser(),
           page.click('label[for="fileInput"]'),
-        ]).catch((error) => {
-          log.error(error);
+        ]).catch((err) => {
+          log.error(err);
+          logger.error(err.stack, loggerObj);
         });
         let imgForUpload = [];
         imgForUpload.push(arrImgPath[index]);
@@ -731,17 +738,6 @@ async function mainProcess(arrAcc, arrItems) {
       await page.type(tagInput, `${element} `);
       await myFunc.timeOutFunc(500);
     }
-    // if (tagListArr.length >= 20) {
-    //   for (let index = 0; index < 20; index++) {
-    //     const element = tagListArr[index];
-    //     await page.type(tagInput, `${element} `)
-    //   }
-    // } else {
-    //   for (let index = 0; index < tagListArr.length; index++) {
-    //     const element = tagListArr[index];
-    //     await page.type(tagInput, `${element} `)
-    //   }
-    // }
     await myFunc.timeOutFunc(2000);
     const uploadBtn = "#multi-submit";
     await page.waitForSelector(uploadBtn);
@@ -775,7 +771,43 @@ async function mainProcess(arrAcc, arrItems) {
         }
       }
     });
-    await myFunc.timeOutFunc(15000);
+    await myFunc.timeOutFunc(3000);
+    await page.waitForFunction(
+      () => {
+        let selector = document.querySelectorAll(".heading-1");
+        var result = false;
+        if (selector[1].textContent == "Hurray!Artwork uploaded!") {
+          result = true;
+        }
+        return result;
+      },
+      { timeout: 0 }
+    );
+    await homeWindow.webContents.send("logs", "Product uploaded");
+    let newPath = path.join(imgDirname, "./done");
+    if (!fs.existsSync(newPath)) {
+      fs.mkdirSync(newPath);
+      await homeWindow.webContents.send("logs", `Folder done created`);
+    }
+    for (let index = 0; index < arrImgPath.length; index++) {
+      const regexStr = /([^\\]+)(?=\.\w+$)/;
+      let imgPath = arrImgPath[index];
+      let imgName = imgPath.replace(/^.*[\\\/]/, "");
+      fs.rename(imgPath, path.join(newPath, "./" + imgName), (err) => {
+        if (err) {
+          log.error(err);
+          logger.error(err.stack, loggerObj);
+        }
+        homeWindow.webContents.send("logs", `Move ${imgName} to done folder`);
+      });
+    }
+    fs.rename(imgPath, path.join(newPath, "./" + imgName), (err) => {
+      if (err) {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
+      }
+      homeWindow.webContents.send("logs", `Move ${imgName} to done folder`);
+    });
     //Notification
     const notifier = new WindowsToaster({
       withFallback: false,
@@ -793,52 +825,88 @@ async function mainProcess(arrAcc, arrItems) {
           logger.error(err.stack, loggerObj);
         }
         // Response is response from notification
-        //console.log("responded...");
       }
     );
-    await closeBrowser(browser).catch((err) => {
+    await common.closeBrowser(browser).catch((err) => {
       log.error(err);
       logger.error(err.stack, loggerObj);
     });
+    await homeWindow.webContents.send("logs", "Browser closed");
   } catch (err) {
     log.error(err);
     logger.error(err.stack, loggerObj);
   }
 }
 
-//--------------------------------------------------------------------
-// BROWSER
-//--------------------------------------------------------------------
-async function openBrowser(proxy) {
-  ip = proxy.split(":")[0];
-  let port = "";
-  typeof proxy.split(":")[1] == "undefined" ? (port = "4444") : (port = proxy.split(":")[1]);
+//----------------------------------
+// OPEN ACCOUNT PROCESS
+//----------------------------------
+async function openAccount(userInfo) {
+  try {
+    const accUsername = userInfo[0];
+    const accPassword = userInfo[1];
+    const proxyIP = userInfo[2];
+    const proxyUser = userInfo[3];
+    const proxyPass = userInfo[4];
 
-  const chromePath =
-    process.env.NODE_ENV === "development"
-      ? puppeteer.executablePath()
-      : path.join(
-          process.resourcesPath,
-          "app.asar.unpacked/node_modules/puppeteer/.local-chromium/win64-818858/chrome-win/chrome.exe"
-        );
-  const browser = await puppeteer.launch({
-    executablePath: chromePath,
-    headless: false,
-    defaultViewport: null,
-    ignoreHTTPSErrors: true,
-    slowMo: 30,
-    args: [`--proxy-server=http://${ip}:${port}`, "--window-size=1366,768"],
-    //--disable-web-security "--window-size=1500,900"
-  });
-  console.log("Browser opened");
-  await homeWindow.webContents.send("logs", "Browser openned");
-  const page = await browser.newPage();
-  let item = { browser: browser, page: page };
-  return item;
-}
-
-async function closeBrowser(browser) {
-  await browser.close();
-  await homeWindow.webContents.send("logs", "Browser closed");
-  console.log(`Browser closed!`);
+    const { browser, page } = await common.openBrowser(proxyIP);
+    await homeWindow.webContents.send("logs", "Browser opened");
+    if (proxyUser.trim() != "" && proxyPass.trim() != "") {
+      await page.authenticate({
+        username: proxyUser,
+        password: proxyPass,
+      });
+    }
+    await page.setDefaultNavigationTimeout(0);
+    await page.goto(`https://displate.com/auth/signin`, {
+      waitUntil: "networkidle2",
+    });
+    await myFunc.timeOutFunc(1000);
+    await page.waitForSelector(".button--login");
+    let siteCapt = await page.evaluate(() => {
+      let grecaptcha = document.getElementById("g-recaptcha-response");
+      let result = false;
+      grecaptcha != null ? (result = true) : (result = false);
+      return result;
+    });
+    if (siteCapt) {
+      await page.type("[name='usernameOrEmail']", accUsername);
+      await myFunc.timeOutFunc(1000);
+      await page.type("[name='password']", accPassword);
+      console.log("resolving siteCapt");
+      await homeWindow.webContents.send("logs", "Resolving captcha...");
+      await page.solveRecaptchas();
+      await homeWindow.webContents.send("logs", "Resolved captcha");
+      console.log("resolved siteCapt");
+      await myFunc.timeOutFunc(1000);
+      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
+      });
+    } else {
+      await page.type("[name='usernameOrEmail']", accUsername);
+      await myFunc.timeOutFunc(1000);
+      await page.type("[name='password']", accPassword);
+      await myFunc.timeOutFunc(1000);
+      await Promise.all([page.click(".button--login"), page.waitForNavigation()]).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
+      });
+    }
+    try {
+      await page.waitForSelector(".aside-menu__item--user", { timeout: 5000 });
+      await homeWindow.webContents.send("logs", `Login success: ${accUsername}`);
+    } catch (error) {
+      await homeWindow.webContents.send("logs", `Login Error: ${accUsername}`);
+      await common.closeBrowser(browser).catch((err) => {
+        log.error(err);
+        logger.error(err.stack, loggerObj);
+      });
+      await homeWindow.webContents.send("logs", "Browser closed");
+      return;
+    }
+  } catch (err) {
+    log.error(err);
+    logger.error(err.stack, loggerObj);
+  }
 }

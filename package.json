@@ -1,6 +1,6 @@
 {
   "name": "displate-upload",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "main.js",
   "build": {
@@ -11,7 +11,7 @@
         "github"
       ],
       "target": "nsis",
-      "icon": "icon.png"
+      "icon": "icon.jpg"
     },
     "extraResources": [
       {
